@@ -1,0 +1,54 @@
+[main]
+standbyTimer = 30000 # time in ms until the SMirror goes into standby
+
+[loggingService]
+name = "fileLogger"
+fileName = "logs/logging"
+errorPrune = true
+logLevel = 4    #Info
+
+[pipelineService]
+name = "concurrentPipeline"
+runningFPS = 30
+standbyFPS = 5
+
+[frontendService]
+name = "frontendFlatbufService"
+pattern = "flutter"
+
+[appService]
+name = "appFlatbufService"
+pattern = "config"
+
+[storageService]
+name = "objectBoxStorage"
+directory = "/var/lib/smirror/db/storage"
+
+[tokenService]
+name = "objectBoxToken"
+directory = "/var/lib/smirror/db/token"
+
+[binaryService]
+name = "objectBoxBinary"
+directory = "/var/lib/smirror/db/binary"
+
+[encryptionService]
+name = "mbedTLSEncryption"
+pbkdf2_iterations = 10000 # higher = more secure but slower
+
+[secretService]
+name = "googleSecretsProvider"
+
+[tpmService]
+name = "softwareTpm"
+
+[systemService]
+name = "systemController"
+
+[updateService]
+name = "updateController"
+
+[resourceService]
+name = "resourceLinux"
+cpuSampleDelayMs = 5
+storagePath = "/"

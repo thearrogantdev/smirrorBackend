@@ -1,0 +1,33 @@
+#!/bin/bash
+set -euo pipefail
+
+STAGE="$1"
+ARG2="$2"
+
+# Handle both full paths (from C++ updater) and raw versions (from bootstrap installer)
+if [[ "$ARG2" == /* ]]; then
+    DST="$ARG2"
+    VER=$(basename "$DST")
+    BASE=$(dirname "$(dirname "$DST")")
+else
+    VER="$ARG2"
+    BASE="/opt/smirror"
+    DST="$BASE/versions/$VER"
+fi
+
+# We do the copying BEFORE stopping the service. This means SMirror stays
+# running while the heavy disk I/O of copying files happens, minimizing downtime!
+mkdir -p "$DST"
+rsync -a --delete "$STAGE/" "$DST/"
+
+# Ensure the new files have the correct permissions so the service can read them
+chown -R root:root "$DST"
+chmod -R 755 "$DST"
+
+# ATOMIC SYMLINK SWAP
+# The -n flag ensures we replace the symlink instead of putting a symlink inside it.
+ln -sfn "versions/$VER" "$BASE/current"
+
+# We use restart instead of stop -> start.
+# The --no-block flag is critical here!
+systemctl restart --no-block smirror

@@ -1,0 +1,102 @@
+[main]
+standbyTimer = 30000 # time in ms until the SMirror goes into standby
+
+[loggingService]
+name = "fileLogger"
+fileName = "logs/logging"
+errorPrune = true
+logLevel = 4    # Info
+
+[pipelineService]
+name = "concurrentPipeline"
+runningFPS = 30
+standbyFPS = 5
+
+[gestureService]
+name = "paj7620Gesture"
+
+[I2CService]
+name = "i2cMraa"
+
+[frontendService]
+name = "frontendFlatbufService"
+pattern = "flutter"
+
+[appService]
+name = "appFlatbufService"
+pattern = "config"
+
+[storageService]
+name = "objectBoxStorage"
+directory = "/var/lib/smirror/db/storage"
+
+[tokenService]
+name = "objectBoxToken"
+directory = "/var/lib/smirror/db/token"
+
+[binaryService]
+name = "objectBoxBinary"
+directory = "/var/lib/smirror/db/binary"
+
+[faceRecognitionService]
+name = "opencvFaceRecognition"
+useGrey = true
+
+# --- Detection (find faces) ---
+det_score_threshold = 0.8    # min face confidence (higher stricter)
+det_nms_threshold   = 0.3    # NMS IoU (lower = more suppression)
+det_top_k           = 5000   # max candidates pre-NMS
+
+# --- Training (build user entry in face_db) ---
+training_shots = 12          # frames averaged per user
+
+# --- Recognition (identify faces) ---
+rec_cosine_threshold = 0.4 # min cosine match (higher stricter)
+recognition_attempts = 10    # snapshots per check
+recognition_attempt_delay_ms = 35 # delay between attempts (ms)
+
+[cameraService]
+name = "cameraOpenCV"
+#Module1 NoIR
+#device = "libcamerasrc exposure-time-mode=manual exposure-time=12000 analogue-gain-mode=manual analogue-gain=8 awb-enable=false colour-gains=\"<1.0,1.0>\" ! video/x-raw,width=1296,height=972,framerate=30/1 ! videoconvert ! video/x-raw,format=GRAY8 ! videoscale ! video/x-raw,width=640,height=480 ! queue max-size-buffers=1 leaky=downstream ! appsink drop=true sync=false max-buffers=1 emit-signals=false"
+#Module3
+device = "libcamerasrc af-mode=manual lens-position=1.5 exposure-time=50000 analogue-gain=10.0 ! video/x-raw,width=2304,height=1296,framerate=5/1 ! videoscale ! video/x-raw,width=640,height=480 ! videoconvert ! video/x-raw,format=GRAY8 ! appsink drop=true sync=false max-buffers=1"
+width = 640
+height = 480
+fps = 30
+m_isNoir = false
+claheClipLimit = 1.5
+
+[encryptionService]
+name = "mbedTLSEncryption"
+pbkdf2_iterations = 10000 # higher = more secure but slower
+
+[secretService]
+name = "googleSecretsProvider"
+
+[tpmService]
+name = "softwareTpm"
+
+[systemService]
+name = "systemController"
+
+[updateService]
+name = "updateController"
+
+[GPIOService]
+name = "gpioPigpio"
+# microseconds between samples, increase for lower CPU usage but less responsive
+cfgClock = 10
+# keep this many milliseconds of GPIO history in RAM, decrese for lower memory usage
+bufferSize = 100
+
+[LEDService]
+name = "ledStrip"
+pinRed = 18
+pinGreen = 12
+pinBlue = 13
+
+[resourceService]
+name = "resourceLinux"
+cpuSampleDelayMs = 5
+storagePath = "/"
