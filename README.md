@@ -21,4 +21,4 @@ All you need to do is execute `install.sh` from our scripts folder. Here is a tw
 
 ```bash
 sudo apt update && sudo apt install -y curl
-curl -fsSL https://raw.githubusercontent.com/thearrogantdev/SMirror/main/scripts/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/thearrogantdev/smirrorBackend/main/scripts/install.sh | sudo bash
