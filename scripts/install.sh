@@ -93,44 +93,18 @@ fi
 
 echo "Target architecture suffix: $ARCH_SUFFIX"
 
-API_URL="https://api.github.com/repos/${REPO}/releases/latest"
-echo "==> Fetching latest release info from: $API_URL"
-
-# -s (silent: hide progress bar), -S (show error if fails), -f (fail on HTTP 404), -L (follow redirects)
-set +e
-GITHUB_RELEASE_JSON=$(curl -sSfL "$API_URL")
-CURL_EXIT=$?
-set -e
-
-if [[ $CURL_EXIT -ne 0 ]]; then
-  echo "====================================================="
-  echo "❌ ERROR: Failed to fetch release info from GitHub"
-  echo "Curl Exit Code: $CURL_EXIT"
-  echo "====================================================="
-  echo "Checklist:"
-  echo "1. Is the repository public?"
-  echo "2. Is the release marked as 'Pre-release' or 'Draft'? (The /latest API ignores those!)"
-  exit 1
-fi
-
 JSON_FILE="update-back-${ARCH_SUFFIX}.json"
-echo "==> Looking for manifest file: $JSON_FILE"
+MANIFEST_URL="https://github.com/${REPO}/releases/latest/download/${JSON_FILE}"
 
-# Parse the JSON
-MANIFEST_URL=$(echo "$GITHUB_RELEASE_JSON" | jq -r ".assets[] | select(.name == \"$JSON_FILE\") | .browser_download_url")
+echo "==> Fetching Update Manifest: $JSON_FILE"
+TMP=$(mktemp -d)
 
-if [[ -z "$MANIFEST_URL" || "$MANIFEST_URL" == "null" ]]; then
+# Download the JSON directly! No API query needed.
+if ! curl -sSfL "$MANIFEST_URL" -o "$TMP/update.json"; then
   echo "❌ No update manifest ($JSON_FILE) found in latest release. Skipping."
-  echo "Here are the files it actually found in the release:"
-  echo "$GITHUB_RELEASE_JSON" | jq -r '.assets[].name'
+  rm -rf "$TMP"
   exit 0
 fi
-
-echo "==> Resolved Manifest URL: $MANIFEST_URL"
-
-TMP=$(mktemp -d)
-echo "==> Downloading manifest from: $MANIFEST_URL"
-curl -sSfL "$MANIFEST_URL" -o "$TMP/update.json"
 
 # Parse information from the downloaded JSON
 VER=$(jq -r '.version' "$TMP/update.json")
