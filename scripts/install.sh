@@ -96,20 +96,16 @@ echo "Target architecture suffix: $ARCH_SUFFIX"
 API_URL="https://api.github.com/repos/${REPO}/releases/latest"
 echo "==> Fetching latest release info from: $API_URL"
 
-# Temporarily disable 'set -e' so we can catch the curl 404 error and log it
+# -s (silent: hide progress bar), -S (show error if fails), -f (fail on HTTP 404), -L (follow redirects)
 set +e
-# Drop the 's' (silent) flag from curl so it prints the real error message to a variable
-GITHUB_RELEASE_JSON=$(curl -fSL "$API_URL" 2>&1)
+GITHUB_RELEASE_JSON=$(curl -sSfL "$API_URL")
 CURL_EXIT=$?
 set -e
 
-# If curl failed (like the 404 you saw), print exactly what happened and exit
 if [[ $CURL_EXIT -ne 0 ]]; then
   echo "====================================================="
   echo "❌ ERROR: Failed to fetch release info from GitHub"
   echo "Curl Exit Code: $CURL_EXIT"
-  echo "GitHub Response:"
-  echo "$GITHUB_RELEASE_JSON"
   echo "====================================================="
   echo "Checklist:"
   echo "1. Is the repository public?"
@@ -120,8 +116,8 @@ fi
 JSON_FILE="update-back-${ARCH_SUFFIX}.json"
 echo "==> Looking for manifest file: $JSON_FILE"
 
+# Parse the JSON
 MANIFEST_URL=$(echo "$GITHUB_RELEASE_JSON" | jq -r ".assets[] | select(.name == \"$JSON_FILE\") | .browser_download_url")
-echo "==> Resolved Manifest URL: $MANIFEST_URL"
 
 if [[ -z "$MANIFEST_URL" || "$MANIFEST_URL" == "null" ]]; then
   echo "❌ No update manifest ($JSON_FILE) found in latest release. Skipping."
@@ -130,9 +126,11 @@ if [[ -z "$MANIFEST_URL" || "$MANIFEST_URL" == "null" ]]; then
   exit 0
 fi
 
+echo "==> Resolved Manifest URL: $MANIFEST_URL"
+
 TMP=$(mktemp -d)
 echo "==> Downloading manifest from: $MANIFEST_URL"
-curl -fsSL "$MANIFEST_URL" -o "$TMP/update.json"
+curl -sSfL "$MANIFEST_URL" -o "$TMP/update.json"
 
 # Parse information from the downloaded JSON
 VER=$(jq -r '.version' "$TMP/update.json")
