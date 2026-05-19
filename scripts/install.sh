@@ -8,11 +8,18 @@ INSTALLER_URL="https://raw.githubusercontent.com/${REPO}/${BRANCH}/${INSTALLER_P
 
 if [[ $EUID -ne 0 ]]; then echo "Run with sudo"; exit 1; fi
 
-echo "==> Installing dependencies"
-apt-get update
-apt-get install -y libdrm2 libgbm1 libegl1-mesa libgles2-mesa \
+echo "==> Installing backend utilities"
+apt-get install -y curl jq unzip rsync
+
+echo "==> Installing flutter-pi graphics & input runtime"
+apt-get install -y libdrm2 libgbm1 libegl1 libgles2 libgl1-mesa-dri \
   libinput10 libxkbcommon0 libudev1 libsystemd0 libasound2 \
-  libglib2.0-0 libpixman-1-0 libgl1-mesa-dri rsync curl jq unzip
+  libglib2.0-0 libpixman-1-0 fontconfig
+
+echo "==> Installing flutter-pi media plugins (GStreamer)"
+apt-get install -y gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+  gstreamer1.0-plugins-ugly gstreamer1.0-plugins-bad gstreamer1.0-libav \
+  gstreamer1.0-alsa
 
 echo "==> Creating smirror user"
 id -u smirror &>/dev/null || useradd -r -m -s /usr/sbin/nologin smirror
