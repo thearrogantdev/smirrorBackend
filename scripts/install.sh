@@ -94,7 +94,7 @@ fi
 echo "Target architecture suffix: $ARCH_SUFFIX"
 
 echo "==> Fetching Update Manifest (JSON)"
-JSON_FILE="update-back-${ARCH_SUFFIX}.json"
+JSON_FILE="smirror-back-${ARCH_SUFFIX}.json"
 GITHUB_RELEASE_JSON=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest")
 
 # Get the URL for the JSON manifest from the latest GitHub release
