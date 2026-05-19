@@ -82,6 +82,8 @@ name = "systemController"
 
 [updateService]
 name = "updateController"
+rootbackendDirectory = "/opt/smirror"
+rootfrontendDirectory = "/var/lib/smirror/frontend"
 
 [GPIOService]
 name = "gpioPigpio"
