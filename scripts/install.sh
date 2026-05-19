@@ -105,6 +105,7 @@ if [[ -z "$MANIFEST_URL" || "$MANIFEST_URL" == "null" ]]; then
   exit 0
 fi
 
+echo "==> Curl JSON: $MANIFEST_URL"
 TMP=$(mktemp -d)
 curl -fsSL "$MANIFEST_URL" -o "$TMP/update.json"
 
