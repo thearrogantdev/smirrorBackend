@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="thearrogantdev/smirrorBackend/"
+REPO="thearrogantdev/smirrorBackend"
 BRANCH="main"
 INSTALLER_PATH="scripts/smirror-installer"
 INSTALLER_URL="https://raw.githubusercontent.com/${REPO}/${BRANCH}/${INSTALLER_PATH}"
@@ -105,7 +105,6 @@ if [[ -z "$MANIFEST_URL" || "$MANIFEST_URL" == "null" ]]; then
   exit 0
 fi
 
-echo "==> Curl JSON: $MANIFEST_URL"
 TMP=$(mktemp -d)
 curl -fsSL "$MANIFEST_URL" -o "$TMP/update.json"
 
