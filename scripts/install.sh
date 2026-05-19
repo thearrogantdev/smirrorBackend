@@ -1,25 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="TheKiHub/SMirror"
+BACKEND_REPO="thearrogantdev/smirrorBackend"
+FRONTEND_REPO="thearrogantdev/smirrorFrontend"
+
 BRANCH="main"
 INSTALLER_PATH="scripts/smirror-installer"
-INSTALLER_URL="https://raw.githubusercontent.com/${REPO}/${BRANCH}/${INSTALLER_PATH}"
+# Assuming the installer script lives in your Backend repo, adjust if needed
+INSTALLER_URL="https://raw.githubusercontent.com/${BACKEND_REPO}/${BRANCH}/${INSTALLER_PATH}"
 
 if [[ $EUID -ne 0 ]]; then echo "Run with sudo"; exit 1; fi
 
-echo "==> Installing backend utilities"
-apt-get install -y curl jq unzip rsync
-
-echo "==> Installing flutter-pi graphics & input runtime"
-apt-get install -y libdrm2 libgbm1 libegl1 libgles2 libgl1-mesa-dri \
+echo "==> Installing dependencies"
+apt-get update
+apt-get install -y curl jq unzip rsync \
+  libdrm2 libgbm1 libegl1 libgles2 libgl1-mesa-dri \
   libinput10 libxkbcommon0 libudev1 libsystemd0 libasound2 \
-  libglib2.0-0 libpixman-1-0 fontconfig
-
-echo "==> Installing flutter-pi media plugins (GStreamer)"
-apt-get install -y gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
-  gstreamer1.0-plugins-ugly gstreamer1.0-plugins-bad gstreamer1.0-libav \
-  gstreamer1.0-alsa
+  libglib2.0-0 libpixman-1-0 fontconfig \
+  gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+  gstreamer1.0-plugins-ugly gstreamer1.0-plugins-bad \
+  gstreamer1.0-libav gstreamer1.0-alsa
 
 echo "==> Creating smirror user"
 id -u smirror &>/dev/null || useradd -r -m -s /usr/sbin/nologin smirror
@@ -64,11 +64,13 @@ systemctl daemon-reload
 systemctl enable smirror.service
 
 [[ -L /opt/smirror/current ]] || ln -sfn versions /opt/smirror/current
-[[ -L /var/lib/smirror/frontend/current ]] || ln -sfn versions /var/lib/smirror/frontend/current
 
+echo "=================================================="
 echo "==> Detecting Hardware and Target Architecture"
+echo "=================================================="
 ARCH=$(uname -m)
 ARCH_SUFFIX=""
+UI_ARCH_SUFFIX=""
 
 if [[ "$ARCH" == "aarch64" ]]; then
   if [[ -f /sys/firmware/devicetree/base/model ]]; then
@@ -77,68 +79,59 @@ if [[ "$ARCH" == "aarch64" ]]; then
 
     if [[ "$MODEL" == *"Raspberry Pi 5"* ]]; then
       ARCH_SUFFIX="aarch64-pi5"
+      UI_ARCH_SUFFIX="aarch64-pi4" # Fallback to Pi4 UI since Pi5 UI doesn't exist yet
     elif [[ "$MODEL" == *"Raspberry Pi 4"* ]] || [[ "$MODEL" == *"Raspberry Pi 400"* ]] || [[ "$MODEL" == *"Compute Module 4"* ]]; then
       ARCH_SUFFIX="aarch64-pi4"
+      UI_ARCH_SUFFIX="aarch64-pi4"
     else
       ARCH_SUFFIX="aarch64"
+      UI_ARCH_SUFFIX="aarch64-generic"
     fi
   else
     ARCH_SUFFIX="aarch64"
+    UI_ARCH_SUFFIX="aarch64-generic"
   fi
-elif [[ "$ARCH" == "armv7l" ]]; then
-  ARCH_SUFFIX="armhf"
 else
   echo "Unsupported arch $ARCH"; exit 1
 fi
 
-echo "Target architecture suffix: $ARCH_SUFFIX"
+echo "Backend architecture suffix: $ARCH_SUFFIX"
+echo "Frontend architecture suffix: $UI_ARCH_SUFFIX"
 
-echo "==> Fetching Update Manifest (JSON)"
+
+echo "=================================================="
+echo "==> 1. Installing Backend"
+echo "=================================================="
 JSON_FILE="update-back-${ARCH_SUFFIX}.json"
-GITHUB_RELEASE_JSON=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest")
+MANIFEST_URL="https://github.com/${BACKEND_REPO}/releases/latest/download/${JSON_FILE}"
+TMP=$(mktemp -d)
 
-# Get the URL for the JSON manifest from the latest GitHub release
-MANIFEST_URL=$(echo "$GITHUB_RELEASE_JSON" | jq -r ".assets[] | select(.name == \"$JSON_FILE\") | .browser_download_url")
-
-if [[ -z "$MANIFEST_URL" || "$MANIFEST_URL" == "null" ]]; then
-  echo "No update manifest ($JSON_FILE) found in latest release. Skipping."
-  exit 0
+if ! curl -sSfL "$MANIFEST_URL" -o "$TMP/update.json"; then
+  echo "❌ No backend manifest ($JSON_FILE) found in latest release. Aborting."
+  rm -rf "$TMP"
+  exit 1
 fi
 
-TMP=$(mktemp -d)
-curl -fsSL "$MANIFEST_URL" -o "$TMP/update.json"
-
-# Parse information from the downloaded JSON
 VER=$(jq -r '.version' "$TMP/update.json")
 ZIP_URL=$(jq -r '.url' "$TMP/update.json")
 EXPECTED_SHA=$(jq -r '.sha256' "$TMP/update.json")
 
-echo "Found version $VER."
-echo "==> Downloading ZIP from: $ZIP_URL"
+echo "✅ Found Backend version $VER"
 curl -L "$ZIP_URL" -o "$TMP/backend.zip"
 
-echo "==> Verifying SHA256 checksum..."
 ACTUAL_SHA=$(sha256sum "$TMP/backend.zip" | awk '{print $1}')
-
 if [[ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]]; then
-    echo "ERROR: SHA256 checksum mismatch!"
-    echo "  Expected: $EXPECTED_SHA"
-    echo "  Actual:   $ACTUAL_SHA"
-    echo "Aborting installation to prevent corrupted or tampered files from running."
+    echo "ERROR: Backend SHA256 checksum mismatch! Aborting."
     rm -rf "$TMP"
     exit 1
 fi
 
-echo "Checksum verified successfully."
-
-echo "==> Extracting package"
 STAGE="/var/cache/smirror/downloads/backend-$VER"
 mkdir -p "$STAGE"
 unzip -q "$TMP/backend.zip" -d "$STAGE"
 chown -R smirror:smirror "$STAGE"
 
 DEFAULT_CFG="$STAGE/bin/config.default.toml"
-
 mkdir -p /etc/smirror
 chown root:smirror /etc/smirror
 chmod 775 /etc/smirror
@@ -150,12 +143,52 @@ if [[ ! -f /etc/smirror/config.toml && -f "$DEFAULT_CFG" ]]; then
   echo "Seeded /etc/smirror/config.toml from version $VER"
 fi
 
-echo "==> Running the installer"
-# Run the installer as root (it will stop/start the service if needed)
+# Run the installer script to link the backend into /opt/smirror
 /opt/smirror/bin/smirror-installer "$STAGE" "$VER"
-
 rm -rf "$TMP"
 
-echo "==> Starting service"
+
+echo "=================================================="
+echo "==> 2. Installing Frontend"
+echo "=================================================="
+UI_JSON_FILE="update-ui-${UI_ARCH_SUFFIX}.json"
+UI_MANIFEST_URL="https://github.com/${FRONTEND_REPO}/releases/latest/download/${UI_JSON_FILE}"
+TMP_UI=$(mktemp -d)
+
+if ! curl -sSfL "$UI_MANIFEST_URL" -o "$TMP_UI/update-ui.json"; then
+  echo "⚠️ No frontend manifest ($UI_JSON_FILE) found. Skipping frontend install."
+else
+  UI_VER=$(jq -r '.version' "$TMP_UI/update-ui.json")
+  UI_ZIP_URL=$(jq -r '.url' "$TMP_UI/update-ui.json")
+  UI_EXPECTED_SHA=$(jq -r '.sha256' "$TMP_UI/update-ui.json")
+
+  echo "✅ Found Frontend version $UI_VER"
+  curl -L "$UI_ZIP_URL" -o "$TMP_UI/frontend.zip"
+
+  UI_ACTUAL_SHA=$(sha256sum "$TMP_UI/frontend.zip" | awk '{print $1}')
+  if [[ "$UI_ACTUAL_SHA" != "$UI_EXPECTED_SHA" ]]; then
+      echo "ERROR: Frontend SHA256 checksum mismatch! Aborting."
+      rm -rf "$TMP_UI"
+      exit 1
+  fi
+
+  echo "==> Extracting Frontend to /var/lib/smirror/frontend/versions/$UI_VER"
+  UI_DST="/var/lib/smirror/frontend/versions/$UI_VER"
+  mkdir -p "$UI_DST"
+  unzip -q "$TMP_UI/frontend.zip" -d "$UI_DST"
+
+  # Ensure proper ownership so the backend can read it
+  chown -R smirror:smirror "/var/lib/smirror/frontend"
+
+  echo "==> Linking Frontend..."
+  # Atomically update the current symlink for the frontend
+  ln -sfn "versions/$UI_VER" "/var/lib/smirror/frontend/current"
+fi
+rm -rf "$TMP_UI"
+
+
+echo "=================================================="
+echo "==> 3. Starting SMirror Service"
+echo "=================================================="
 systemctl start smirror
 systemctl status smirror --no-pager
