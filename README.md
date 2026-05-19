@@ -17,8 +17,12 @@ But don't worry, the Flutter parts are completely open-source! The current archi
 
 ## 🚀 Quick Start
 
-All you need to do is execute `install.sh` from our scripts folder. Here is a two-liner to get everything running on a fresh OS:
+All you need to do is execute `install.sh` from our scripts folder. Just do the following two commands:
 
 ```bash
 sudo apt update && sudo apt install -y curl
+```
+
+```bash
 curl -fsSL https://raw.githubusercontent.com/thearrogantdev/smirrorBackend/main/scripts/install.sh | sudo bash
+```

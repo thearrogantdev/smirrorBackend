@@ -13,13 +13,17 @@ if [[ $EUID -ne 0 ]]; then echo "Run with sudo"; exit 1; fi
 
 echo "==> Installing dependencies"
 apt-get update
-apt-get install -y curl jq unzip rsync \
+apt-get install -y eatmydata
+eatmydata apt-get install -y curl jq unzip rsync \
   libdrm2 libgbm1 libegl1 libgles2 libgl1-mesa-dri \
   libinput10 libxkbcommon0 libudev1 libsystemd0 libasound2 \
   libglib2.0-0 libpixman-1-0 fontconfig \
   gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
   gstreamer1.0-plugins-ugly gstreamer1.0-plugins-bad \
   gstreamer1.0-libav gstreamer1.0-alsa
+
+echo "==> Flushing write cache to SD card..."
+sync
 
 echo "==> Creating smirror user"
 id -u smirror &>/dev/null || useradd -r -m -s /usr/sbin/nologin smirror
