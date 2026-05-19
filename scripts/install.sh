@@ -93,25 +93,55 @@ fi
 
 echo "Target architecture suffix: $ARCH_SUFFIX"
 
-echo "==> Fetching Update Manifest (JSON)"
-JSON_FILE="smirror-back-${ARCH_SUFFIX}.json"
-GITHUB_RELEASE_JSON=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest")
+API_URL="https://api.github.com/repos/${REPO}/releases/latest"
+echo "==> Fetching latest release info from: $API_URL"
 
-# Get the URL for the JSON manifest from the latest GitHub release
+# Temporarily disable 'set -e' so we can catch the curl 404 error and log it
+set +e
+# Drop the 's' (silent) flag from curl so it prints the real error message to a variable
+GITHUB_RELEASE_JSON=$(curl -fSL "$API_URL" 2>&1)
+CURL_EXIT=$?
+set -e
+
+# If curl failed (like the 404 you saw), print exactly what happened and exit
+if [[ $CURL_EXIT -ne 0 ]]; then
+  echo "====================================================="
+  echo "❌ ERROR: Failed to fetch release info from GitHub"
+  echo "Curl Exit Code: $CURL_EXIT"
+  echo "GitHub Response:"
+  echo "$GITHUB_RELEASE_JSON"
+  echo "====================================================="
+  echo "Checklist:"
+  echo "1. Is the repository public?"
+  echo "2. Is the release marked as 'Pre-release' or 'Draft'? (The /latest API ignores those!)"
+  exit 1
+fi
+
+JSON_FILE="update-back-${ARCH_SUFFIX}.json"
+echo "==> Looking for manifest file: $JSON_FILE"
+
 MANIFEST_URL=$(echo "$GITHUB_RELEASE_JSON" | jq -r ".assets[] | select(.name == \"$JSON_FILE\") | .browser_download_url")
+echo "==> Resolved Manifest URL: $MANIFEST_URL"
 
 if [[ -z "$MANIFEST_URL" || "$MANIFEST_URL" == "null" ]]; then
-  echo "No update manifest ($JSON_FILE) found in latest release. Skipping."
+  echo "❌ No update manifest ($JSON_FILE) found in latest release. Skipping."
+  echo "Here are the files it actually found in the release:"
+  echo "$GITHUB_RELEASE_JSON" | jq -r '.assets[].name'
   exit 0
 fi
 
 TMP=$(mktemp -d)
+echo "==> Downloading manifest from: $MANIFEST_URL"
 curl -fsSL "$MANIFEST_URL" -o "$TMP/update.json"
 
 # Parse information from the downloaded JSON
 VER=$(jq -r '.version' "$TMP/update.json")
 ZIP_URL=$(jq -r '.url' "$TMP/update.json")
 EXPECTED_SHA=$(jq -r '.sha256' "$TMP/update.json")
+
+echo "✅ Found version $VER"
+echo "   ZIP URL: $ZIP_URL"
+echo "   SHA256:  $EXPECTED_SHA"
 
 echo "Found version $VER."
 echo "==> Downloading ZIP from: $ZIP_URL"
