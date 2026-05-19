@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="TheKiHub/SMirror"
+REPO="thearrogantdev/smirrorBackend/"
 BRANCH="main"
 INSTALLER_PATH="scripts/smirror-installer"
 INSTALLER_URL="https://raw.githubusercontent.com/${REPO}/${BRANCH}/${INSTALLER_PATH}"
