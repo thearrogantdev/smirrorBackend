@@ -131,9 +131,10 @@ if [[ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]]; then
 fi
 
 STAGE="/var/cache/smirror/downloads/backend-$VER"
+rm -rf "$STAGE"
 mkdir -p "$STAGE"
 unzip -q "$TMP/backend.zip" -d "$STAGE"
-chown -R smirror:smirror "$STAGE"
+chown -R -o smirror:smirror "$STAGE"
 
 DEFAULT_CFG="$STAGE/bin/config.default.toml"
 mkdir -p /etc/smirror
@@ -178,8 +179,9 @@ else
 
   echo "==> Extracting Frontend to /var/lib/smirror/frontend/versions/$UI_VER"
   UI_DST="/var/lib/smirror/frontend/versions/$UI_VER"
+  rm -rf "$UI_DST"
   mkdir -p "$UI_DST"
-  unzip -q "$TMP_UI/frontend.zip" -d "$UI_DST"
+  unzip -q -o "$TMP_UI/frontend.zip" -d "$UI_DST"
 
   # Ensure proper ownership so the backend can read it
   chown -R smirror:smirror "/var/lib/smirror/frontend"
