@@ -133,8 +133,8 @@ fi
 STAGE="/var/cache/smirror/downloads/backend-$VER"
 rm -rf "$STAGE"
 mkdir -p "$STAGE"
-unzip -q "$TMP/backend.zip" -d "$STAGE"
-chown -R -o smirror:smirror "$STAGE"
+unzip -q -o "$TMP/backend.zip" -d "$STAGE"
+chown -R smirror:smirror "$STAGE"
 
 DEFAULT_CFG="$STAGE/bin/config.default.toml"
 mkdir -p /etc/smirror
