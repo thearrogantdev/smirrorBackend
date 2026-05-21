@@ -6,10 +6,35 @@ FRONTEND_REPO="thearrogantdev/smirrorFrontend"
 
 BRANCH="main"
 INSTALLER_PATH="scripts/smirror-installer"
-# Assuming the installer script lives in your Backend repo, adjust if needed
 INSTALLER_URL="https://raw.githubusercontent.com/${BACKEND_REPO}/${BRANCH}/${INSTALLER_PATH}"
 
-if [[ $EUID -ne 0 ]]; then echo "Run with sudo"; exit 1; fi
+# ==============================================================================
+# DYNAMIC UNICODE/EMOJI DETECTION
+# ==============================================================================
+USE_EMOJI=false
+
+# Check if stdout is a TTY (terminal) AND if the locale supports UTF-8
+if [[ -t 1 ]]; then
+    if [[ "$(locale charmap 2>/dev/null)" == "UTF-8" ]] || \
+       [[ "${LANG:-}" == *".UTF-8"* ]] || \
+       [[ "${LC_ALL:-}" == *".UTF-8"* ]]; then
+        USE_EMOJI=true
+    fi
+fi
+
+# Define status indicators based on terminal capabilities
+if $USE_EMOJI; then
+    STATUS_OK="✅"
+    STATUS_ERR="❌"
+    STATUS_WARN="⚠️ "
+else
+    STATUS_OK="[  OK  ]"
+    STATUS_ERR="[ ERROR ]"
+    STATUS_WARN="[WARNING]"
+fi
+# ==============================================================================
+
+if [[ $EUID -ne 0 ]]; then echo "$STATUS_ERR Run with sudo"; exit 1; fi
 
 echo "==> Installing dependencies"
 apt-get update
@@ -96,7 +121,7 @@ if [[ "$ARCH" == "aarch64" ]]; then
     UI_ARCH_SUFFIX="aarch64-generic"
   fi
 else
-  echo "Unsupported arch $ARCH"; exit 1
+  echo "$STATUS_ERR Unsupported arch $ARCH"; exit 1
 fi
 
 echo "Backend architecture suffix: $ARCH_SUFFIX"
@@ -111,7 +136,7 @@ MANIFEST_URL="https://github.com/${BACKEND_REPO}/releases/latest/download/${JSON
 TMP=$(mktemp -d)
 
 if ! curl -sSfL "$MANIFEST_URL" -o "$TMP/update.json"; then
-  echo "❌ No backend manifest ($JSON_FILE) found in latest release. Aborting."
+  echo "$STATUS_ERR No backend manifest ($JSON_FILE) found in latest release. Aborting."
   rm -rf "$TMP"
   exit 1
 fi
@@ -120,12 +145,12 @@ VER=$(jq -r '.version' "$TMP/update.json")
 ZIP_URL=$(jq -r '.url' "$TMP/update.json")
 EXPECTED_SHA=$(jq -r '.sha256' "$TMP/update.json")
 
-echo "✅ Found Backend version $VER"
+echo "$STATUS_OK Found Backend version $VER"
 curl -L "$ZIP_URL" -o "$TMP/backend.zip"
 
 ACTUAL_SHA=$(sha256sum "$TMP/backend.zip" | awk '{print $1}')
 if [[ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]]; then
-    echo "ERROR: Backend SHA256 checksum mismatch! Aborting."
+    echo "$STATUS_ERR Backend SHA256 checksum mismatch! Aborting."
     rm -rf "$TMP"
     exit 1
 fi
@@ -161,18 +186,18 @@ UI_MANIFEST_URL="https://github.com/${FRONTEND_REPO}/releases/latest/download/${
 TMP_UI=$(mktemp -d)
 
 if ! curl -sSfL "$UI_MANIFEST_URL" -o "$TMP_UI/update-ui.json"; then
-  echo "⚠️ No frontend manifest ($UI_JSON_FILE) found. Skipping frontend install."
+  echo "$STATUS_WARN No frontend manifest ($UI_JSON_FILE) found. Skipping frontend install."
 else
   UI_VER=$(jq -r '.version' "$TMP_UI/update-ui.json")
   UI_ZIP_URL=$(jq -r '.url' "$TMP_UI/update-ui.json")
   UI_EXPECTED_SHA=$(jq -r '.sha256' "$TMP_UI/update-ui.json")
 
-  echo "✅ Found Frontend version $UI_VER"
+  echo "$STATUS_OK Found Frontend version $UI_VER"
   curl -L "$UI_ZIP_URL" -o "$TMP_UI/frontend.zip"
 
   UI_ACTUAL_SHA=$(sha256sum "$TMP_UI/frontend.zip" | awk '{print $1}')
   if [[ "$UI_ACTUAL_SHA" != "$UI_EXPECTED_SHA" ]]; then
-      echo "ERROR: Frontend SHA256 checksum mismatch! Aborting."
+      echo "$STATUS_ERR Frontend SHA256 checksum mismatch! Aborting."
       rm -rf "$TMP_UI"
       exit 1
   fi
