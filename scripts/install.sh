@@ -50,9 +50,50 @@ eatmydata apt-get install -y curl jq unzip rsync \
 echo "==> Flushing write cache to SD card..."
 sync
 
+echo "=================================================="
+echo "==> Building and Installing pigpio Daemon from Source"
+echo "=================================================="
+TMP_PIGPIO=$(mktemp -d)
+
+# Download the v79 archive
+curl -fsSL "https://github.com/joan2937/pigpio/archive/refs/tags/v79.tar.gz" -o "$TMP_PIGPIO/pigpio.tar.gz"
+tar -xf "$TMP_PIGPIO/pigpio.tar.gz" -C "$TMP_PIGPIO" --strip-components=1
+
+cd "$TMP_PIGPIO"
+
+# CRITICAL FIX: Delete the Python setup.py lines from the Makefile
+# so we don't crash on Python 3.12+ (we only need the C++ binaries!)
+sed -i '/setup.py/d' Makefile
+
+# Compile and Install the C++ binaries
+make -j$(nproc)
+make install
+
+# Manually copy the systemd service file to the correct directory
+cp util/pigpiod.service /etc/systemd/system/
+
+# Fix the executable path inside the service file (from /usr/bin to /usr/local/bin)
+sed -i 's|/usr/bin/pigpiod|/usr/local/bin/pigpiod|g' /etc/systemd/system/pigpiod.service
+
+# Reload systemd and start the daemon
+systemctl daemon-reload
+systemctl enable pigpiod
+systemctl start pigpiod
+
+# Clean up the temp folder
+rm -rf "$TMP_PIGPIO"
+
 echo "==> Creating smirror user"
 id -u smirror &>/dev/null || useradd -r -m -s /usr/sbin/nologin smirror
-usermod -aG video,input,render,audio,tty,gpio smirror
+# allow the smirror user to communicate with all kinds of hardware. You can change the WANTED_GROUPS when you already
+# know what services you exactly need
+echo "==> Granting hardware group permissions..."
+WANTED_GROUPS=("video" "input" "render" "audio" "tty" "gpio" "i2c" "spi" "dialout" "bluetooth" "netdev" "plugdev")
+for g in "${WANTED_GROUPS[@]}"; do
+    if getent group "$g" >/dev/null 2>&1; then
+        usermod -aG "$g" smirror
+    fi
+done
 
 echo "==> Creating directories"
 mkdir -p /opt/smirror/bin /opt/smirror/versions
@@ -85,7 +126,9 @@ ExecStart=/opt/smirror/current/bin/smirror
 Restart=always
 RestartSec=3
 ReadWritePaths=/var/lib/smirror /var/cache/smirror
-ProtectSystem=strict
+#Will set to strict when the current folder structer is battle-proven and we can set all the rules
+#ProtectSystem=strict
+ProtectSystem=true
 [Install]
 WantedBy=multi-user.target
 EOF

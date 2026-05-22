@@ -26,3 +26,9 @@ sudo apt update && sudo apt install -y curl
 ```bash
 curl -fsSL https://raw.githubusercontent.com/thearrogantdev/smirrorBackend/main/scripts/install.sh | sudo bash
 ```
+
+If you can't update the backend with the app because it don't react or don't connect you can connect to your board via ssh
+and update to the newest frontend/backend with this line:
+```bash
+curl -fsSL https://raw.githubusercontent.com/thearrogantdev/smirrorBackend/main/scripts/update.sh | sudo bash
+```
