@@ -1,0 +1,88 @@
+name: Verify Release Integrity
+
+on:
+  release:
+    types: [published, edited]
+
+jobs:
+  verify:
+    name: Verify Release Assets
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@v4
+
+      - name: Download all release assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p release-assets
+          # Added double-quotes to prevent breaking on tags like v1.0.0+build
+          gh release download "${{ github.event.release.tag_name }}" --dir release-assets --repo "${{ github.repository }}"
+
+      - name: Verify JSON manifests and ZIP checksums
+        run: |
+          cd release-assets
+          FAILED=0
+          FOUND_ANY=0
+          
+          echo "=========================================================="
+          echo " Starting Release Verification for: ${{ github.event.release.tag_name }}"
+          echo "=========================================================="
+          
+          # Using process substitution to prevent word-splitting on spaces 
+          # and ensure variable modifications (FAILED=1) survive the loop scope!
+          while IFS= read -r -d '' json_file; do
+            FOUND_ANY=1
+            echo "--------------------------------------------------"
+            echo "Analyzing manifest: $(basename "$json_file")"
+          
+            # Parse values from JSON
+            VERSION=$(jq -r '.version // empty' "$json_file")
+            ZIP_URL=$(jq -r '.url // empty' "$json_file")
+            EXPECTED_SHA=$(jq -r '.sha256 // empty' "$json_file")
+          
+            if [[ -z "$ZIP_URL" || -z "$EXPECTED_SHA" ]]; then
+              echo "⚠️ Warning: Manifest $(basename "$json_file") is missing 'url' or 'sha256' fields. Skipping."
+              continue
+            fi
+          
+            # Extract the expected zip filename from the URL path
+            ZIP_NAME=$(basename "$ZIP_URL")
+          
+            echo "Target Version: $VERSION"
+            echo "Target ZIP:     $ZIP_NAME"
+          
+            # Verify the ZIP actually exists in the downloaded release assets
+            if [ ! -f "$ZIP_NAME" ]; then
+              echo "❌ ERROR: Target ZIP file '$ZIP_NAME' was not found in the release assets!"
+              FAILED=1
+              continue
+            fi
+          
+            # Calculate the actual SHA-256 of the local ZIP
+            ACTUAL_SHA=$(sha256sum "$ZIP_NAME" | awk '{print $1}')
+          
+            echo "Expected SHA256: $EXPECTED_SHA"
+            echo "Actual SHA256:   $ACTUAL_SHA"
+          
+            if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+              echo "❌ ERROR: Checksum mismatch for $ZIP_NAME!"
+              FAILED=1
+            else
+              echo "✅ Checksum verified successfully!"
+            fi
+          done < <(find . -name "*.json" -print0)
+          
+          if [ "$FOUND_ANY" -eq 0 ]; then
+            echo "⚠️ Warning: No JSON manifest files found in the release assets."
+            exit 0
+          fi
+          
+          echo "=========================================================="
+          if [ "$FAILED" -ne 0 ]; then
+            echo "❌ Verification FAILED! One or more assets are corrupt, mismatched, or missing."
+            exit 1
+          else
+            echo "✅ All release assets verified successfully! STANDALONE UPDATE IS SAFE."
+          fi

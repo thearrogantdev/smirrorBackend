@@ -3,6 +3,7 @@ set -euo pipefail
 
 BACKEND_REPO="thearrogantdev/smirrorBackend"
 FRONTEND_REPO="thearrogantdev/smirrorFrontend"
+WEBAPP_REPO="thearrogantdev/smirrorApp"
 
 # ==============================================================================
 # DYNAMIC UNICODE/EMOJI DETECTION
@@ -77,8 +78,9 @@ echo "Frontend architecture suffix: $UI_ARCH_SUFFIX"
 echo "=================================================="
 echo "==> 1. Updating Backend"
 echo "=================================================="
+# Added ?t= timestamp cache-buster to bypass GitHub CDN caching
 JSON_FILE="update-back-${ARCH_SUFFIX}.json"
-MANIFEST_URL="https://github.com/${BACKEND_REPO}/releases/latest/download/${JSON_FILE}"
+MANIFEST_URL="https://github.com/${BACKEND_REPO}/releases/latest/download/${JSON_FILE}?t=$(date +%s)"
 TMP=$(mktemp -d)
 
 if ! curl -sSfL "$MANIFEST_URL" -o "$TMP/update.json"; then
@@ -93,12 +95,21 @@ else
     echo "$STATUS_OK Backend is already up to date (Version $VER is active)."
   else
     echo "==> Downloading Backend version $VER..."
-    curl -L "$ZIP_URL" -o "$TMP/backend.zip"
+    # Added ?t= timestamp cache-buster to the ZIP URL too
+    if ! curl -fSL "${ZIP_URL}?t=$(date +%s)" -o "$TMP/backend.zip"; then
+        echo "$STATUS_ERR Failed to download the backend ZIP file from: $ZIP_URL"
+        echo "Please verify that the ZIP asset is uploaded to your GitHub release!"
+        rm -rf "$TMP"
+        exit 1
+    fi
 
     echo "==> Verifying SHA256 checksum..."
     ACTUAL_SHA=$(sha256sum "$TMP/backend.zip" | awk '{print $1}')
     if [[ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]]; then
         echo "$STATUS_ERR Backend SHA256 checksum mismatch! Aborting."
+        echo "  Expected: $EXPECTED_SHA"
+        echo "  Actual:   $ACTUAL_SHA"
+        echo "  (This is often caused by GitHub CDN caching. Try again in a few minutes)."
         rm -rf "$TMP"
         exit 1
     fi
@@ -121,8 +132,9 @@ rm -rf "$TMP"
 echo "=================================================="
 echo "==> 2. Updating Frontend"
 echo "=================================================="
+# Added ?t= timestamp cache-buster to bypass GitHub CDN caching
 UI_JSON_FILE="update-ui-${UI_ARCH_SUFFIX}.json"
-UI_MANIFEST_URL="https://github.com/${FRONTEND_REPO}/releases/latest/download/${UI_JSON_FILE}"
+UI_MANIFEST_URL="https://github.com/${FRONTEND_REPO}/releases/latest/download/${UI_JSON_FILE}?t=$(date +%s)"
 TMP_UI=$(mktemp -d)
 
 if ! curl -sSfL "$UI_MANIFEST_URL" -o "$TMP_UI/update-ui.json"; then
@@ -137,12 +149,21 @@ else
     echo "$STATUS_OK Frontend is already up to date (Version $UI_VER is active)."
   else
     echo "==> Downloading Frontend version $UI_VER..."
-    curl -L "$ZIP_URL" -o "$TMP_UI/frontend.zip"
+    # Added ?t= timestamp cache-buster to the ZIP URL too
+    if ! curl -fSL "${UI_ZIP_URL}?t=$(date +%s)" -o "$TMP_UI/frontend.zip"; then
+        echo "$STATUS_ERR Failed to download the frontend ZIP file from: $UI_ZIP_URL"
+        echo "Please verify that the ZIP asset is uploaded to your GitHub release!"
+        rm -rf "$TMP_UI"
+        exit 1
+    fi
 
     echo "==> Verifying SHA256 checksum..."
     UI_ACTUAL_SHA=$(sha256sum "$TMP_UI/frontend.zip" | awk '{print $1}')
     if [[ "$UI_ACTUAL_SHA" != "$UI_EXPECTED_SHA" ]]; then
         echo "$STATUS_ERR Frontend SHA256 checksum mismatch! Aborting."
+        echo "  Expected: $UI_EXPECTED_SHA"
+        echo "  Actual:   $UI_ACTUAL_SHA"
+        echo "  (This is often caused by GitHub CDN caching. Try again in a few minutes)."
         rm -rf "$TMP_UI"
         exit 1
     fi
@@ -165,7 +186,63 @@ rm -rf "$TMP_UI"
 
 
 echo "=================================================="
-echo "==> 3. Restarting SMirror Service"
+echo "==> 3. Updating Webapp"
+echo "=================================================="
+# Added ?t= timestamp cache-buster to bypass GitHub CDN caching
+WEB_JSON_FILE="update-app-web.json"
+WEB_MANIFEST_URL="https://github.com/${WEBAPP_REPO}/releases/latest/download/${WEB_JSON_FILE}?t=$(date +%s)"
+TMP_WEB=$(mktemp -d)
+
+if ! curl -sSfL "$WEB_MANIFEST_URL" -o "$TMP_WEB/update-web.json"; then
+  echo "$STATUS_WARN No webapp manifest ($WEB_JSON_FILE) found in latest release. Skipping webapp update."
+else
+  WEB_VER=$(jq -r '.version' "$TMP_WEB/update-web.json")
+  WEB_ZIP_URL=$(jq -r '.url' "$TMP_WEB/update-web.json")
+  WEB_EXPECTED_SHA=$(jq -r '.sha256' "$TMP_WEB/update-web.json")
+
+  # VERSION GUARD: Only download if we don't have this version folder yet
+  if [[ -d "/var/lib/smirror/webapp/versions/$WEB_VER" ]]; then
+    echo "$STATUS_OK Webapp is already up to date (Version $WEB_VER is active)."
+  else
+    echo "==> Downloading Webapp version $WEB_VER..."
+    # Added ?t= timestamp cache-buster to the ZIP URL too
+    if ! curl -fSL "${WEB_ZIP_URL}?t=$(date +%s)" -o "$TMP_WEB/webapp.zip"; then
+        echo "$STATUS_ERR Failed to download the webapp ZIP file from: $WEB_ZIP_URL"
+        echo "Please verify that the ZIP asset is uploaded to your GitHub release!"
+        rm -rf "$TMP_WEB"
+        exit 1
+    fi
+
+    echo "==> Verifying SHA256 checksum..."
+    WEB_ACTUAL_SHA=$(sha256sum "$TMP_WEB/webapp.zip" | awk '{print $1}')
+    if [[ "$WEB_ACTUAL_SHA" != "$WEB_EXPECTED_SHA" ]]; then
+        echo "$STATUS_ERR Webapp SHA256 checksum mismatch! Aborting."
+        echo "  Expected: $WEB_EXPECTED_SHA"
+        echo "  Actual:   $WEB_ACTUAL_SHA"
+        echo "  (This is often caused by GitHub CDN caching. Try again in a few minutes)."
+        rm -rf "$TMP_WEB"
+        exit 1
+    fi
+
+    WEB_DST="/var/lib/smirror/webapp/versions/$WEB_VER"
+    rm -rf "$WEB_DST" # Clean install directory
+    mkdir -p "$WEB_DST"
+
+    echo "==> Extracting Webapp..."
+    unzip -q -o "$TMP_WEB/webapp.zip" -d "$WEB_DST"
+    chown -R smirror:smirror "/var/lib/smirror/webapp"
+
+    echo "==> Linking Webapp (live)..."
+    ln -sfn "versions/$WEB_VER" "/var/lib/smirror/webapp/live"
+    chown -h smirror:smirror "/var/lib/smirror/webapp/live"
+    echo "$STATUS_OK Webapp updated to $WEB_VER"
+  fi
+fi
+rm -rf "$TMP_WEB"
+
+
+echo "=================================================="
+echo "==> 4. Restarting SMirror Service"
 echo "=================================================="
 systemctl restart smirror
 systemctl status smirror --no-pager

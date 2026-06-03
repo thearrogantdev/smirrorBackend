@@ -3,6 +3,7 @@ set -euo pipefail
 
 BACKEND_REPO="thearrogantdev/smirrorBackend"
 FRONTEND_REPO="thearrogantdev/smirrorFrontend"
+WEBAPP_REPO="thearrogantdev/smirrorApp"
 
 BRANCH="main"
 INSTALLER_PATH="scripts/smirror-installer"
@@ -97,7 +98,7 @@ done
 
 echo "==> Creating directories"
 mkdir -p /opt/smirror/bin /opt/smirror/versions
-mkdir -p /var/lib/smirror/frontend/versions /var/lib/smirror/db
+mkdir -p /var/lib/smirror/frontend/versions /var/lib/smirror/webapp/versions /var/lib/smirror/db
 mkdir -p /var/cache/smirror/downloads
 chown root:root /opt/smirror; chmod 755 /opt/smirror /opt/smirror/bin
 chown -R smirror:smirror /var/lib/smirror /var/cache/smirror
@@ -189,7 +190,7 @@ ZIP_URL=$(jq -r '.url' "$TMP/update.json")
 EXPECTED_SHA=$(jq -r '.sha256' "$TMP/update.json")
 
 echo "$STATUS_OK Found Backend version $VER"
-curl -L "$ZIP_URL" -o "$TMP/backend.zip"
+curl -fSL "$ZIP_URL" -o "$TMP/backend.zip"
 
 ACTUAL_SHA=$(sha256sum "$TMP/backend.zip" | awk '{print $1}')
 if [[ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]]; then
@@ -201,7 +202,7 @@ fi
 STAGE="/var/cache/smirror/downloads/backend-$VER"
 rm -rf "$STAGE"
 mkdir -p "$STAGE"
-unzip -q -o "$TMP/backend.zip" -d "$STAGE"
+unzip (q) -o "$TMP/backend.zip" -d "$STAGE"
 chown -R smirror:smirror "$STAGE"
 
 DEFAULT_CFG="$STAGE/bin/config.default.toml"
@@ -236,7 +237,7 @@ else
   UI_EXPECTED_SHA=$(jq -r '.sha256' "$TMP_UI/update-ui.json")
 
   echo "$STATUS_OK Found Frontend version $UI_VER"
-  curl -L "$UI_ZIP_URL" -o "$TMP_UI/frontend.zip"
+  curl -fSL "$UI_ZIP_URL" -o "$TMP_UI/frontend.zip"
 
   UI_ACTUAL_SHA=$(sha256sum "$TMP_UI/frontend.zip" | awk '{print $1}')
   if [[ "$UI_ACTUAL_SHA" != "$UI_EXPECTED_SHA" ]]; then
@@ -262,7 +263,48 @@ rm -rf "$TMP_UI"
 
 
 echo "=================================================="
-echo "==> 3. Starting SMirror Service"
+echo "==> 3. Installing Webapp"
+echo "=================================================="
+WEB_JSON_FILE="update-app-web.json"
+WEB_MANIFEST_URL="https://github.com/${WEBAPP_REPO}/releases/latest/download/${WEB_JSON_FILE}"
+TMP_WEB=$(mktemp -d)
+
+if ! curl -sSfL "$WEB_MANIFEST_URL" -o "$TMP_WEB/update-web.json"; then
+  echo "$STATUS_WARN No webapp manifest ($WEB_JSON_FILE) found. Skipping webapp install."
+else
+  WEB_VER=$(jq -r '.version' "$TMP_WEB/update-web.json")
+  WEB_ZIP_URL=$(jq -r '.url' "$TMP_WEB/update-web.json")
+  WEB_EXPECTED_SHA=$(jq -r '.sha256' "$TMP_WEB/update-web.json")
+
+  echo "$STATUS_OK Found Webapp version $WEB_VER"
+  curl -fSL "$WEB_ZIP_URL" -o "$TMP_WEB/webapp.zip"
+
+  WEB_ACTUAL_SHA=$(sha256sum "$TMP_WEB/webapp.zip" | awk '{print $1}')
+  if [[ "$WEB_ACTUAL_SHA" != "$WEB_EXPECTED_SHA" ]]; then
+      echo "$STATUS_ERR Webapp SHA256 checksum mismatch! Aborting."
+      rm -rf "$TMP_WEB"
+      exit 1
+  fi
+
+  echo "==> Extracting Webapp to /var/lib/smirror/webapp/versions/$WEB_VER"
+  WEB_DST="/var/lib/smirror/webapp/versions/$WEB_VER"
+  rm -rf "$WEB_DST"
+  mkdir -p "$WEB_DST"
+  unzip -q -o "$TMP_WEB/webapp.zip" -d "$WEB_DST"
+
+  # Ensure proper ownership so the backend can serve it
+  chown -R smirror:smirror "/var/lib/smirror/webapp"
+
+  echo "==> Linking Webapp (live)..."
+  # Atomically update the "live" symlink for the webapp
+  ln -sfn "versions/$WEB_VER" "/var/lib/smirror/webapp/live"
+  chown -h smirror:smirror "/var/lib/smirror/webapp/live"
+fi
+rm -rf "$TMP_WEB"
+
+
+echo "=================================================="
+echo "==> 4. Starting SMirror Service"
 echo "=================================================="
 systemctl start smirror
 systemctl status smirror --no-pager
